@@ -1,0 +1,29 @@
+<form method="post">
+<textarea rows="4" cols="50" name="comment"></textarea>
+{{Error}}
+
+
+    <input type="submit" value="Submit Comment" />
+</form>
+
+{% for comment in Comments %}
+
+
+
+<pre class="post-body">{{comment.comment_content}} by {{comment.comment_author}} at {{comment.created}}</pre>
+
+<form action="/blog/{{id}}/comment/{{comment.key().id()}}">
+    <input type="submit" value="Edit" />
+</form>
+<form action="/blog/{{id}}/comment/{{comment.key().id()}}/delete">
+    <input type="submit" value="Delete" />
+</form>
+
+<br>
+
+
+{% endfor %}
+
+<form action="/blog/{{id}}">
+    <input type="submit" value="Go back" />
+</form>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+
+
+<html>
+
+    <head>
+        <title>My Basic Blog</title>
+    </head>
+
+    <style type="text/css">
+
+    .main-title {
+    display: block;
+    color: #222;
+    font-size: 40px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 30px;
+    text-decoration: none;
+    }
+    .post+.art{
+        margin-top:20px;
+    }
+    .post-title{
+        font-weight: bold;
+        font-size: 20px;
+    }
+    .post-body{
+        margin:0;
+        font-size: 17px;
+    }
+    .post-date {
+    position: absolute;
+    right: 0px;
+    bottom: 0px;
+    color: #999;
+    }
+
+
+    </style>
+
+
+    <body>
+  <a href="/blog" class="main-title">
+    My Basic Blog
+  </a>
+<form action="/blog/login">
+    <input type="submit" value="Login" />
+</form>
+<form action="/blog/signup">
+    <input type="submit" value="Sign up" />
+</form>
+<form action="/blog/logout">
+    <input type="submit" value="Log out" />
+</form>
+
+<form action="/blog/newpost">
+    <input type="submit" value="New Post" />
+</form>
+
+
+    {% block content %}
+    {% endblock %}
+
+
+{% if newpost_subject %}
+<div class="post">
+    <div class="post-title">{{newpost_subject}}</div>
+    <div>By {{newpost_author}} posted at {{newpost_created}}</div>
+    <pre class="post-body">{{newpost_content}}</pre>
+    <div> Likes = {{newpost_likes}}
+
+
+<form action="/blog/{{id}}/edit">
+    <input type="submit" value="Edit" />
+</form>
+
+<form action="/blog/{{id}}/delete">
+    <input type="submit" value="Delete" />
+</form>
+
+
+<form action="/blog/{{id}}/comment">
+    <input type="submit" value="Comments" />
+</form>
+
+<form action="/blog/{{id}}/like">
+    <input type="submit" value="Like" />
+</form>
+
+<form action="/blog/{{id}}/unlike">
+    <input type="submit" value="Unlike" />
+</form>
+
+{{PermissionDenied}}
+
+</div>
+
+        <hr>
+        {% for comment in comments %}
+        <pre class="post-body">{{comment}} by {{commentUser}}</pre>
+            <br>
+        {% endfor %}
+
+
+
+{% endif %}
+
+{% if posts %}
+        <hr>
+        {% for post in posts %}
+            <div class="post">
+                <div class="post-title"><a href="/blog/{{post.key().id()}}">{{post.subject}} by {{post.author}} posted at {{post.created}}</a></div>
+                <pre class="post-body">{{post.content}}</pre>
+            </div>
+        {% endfor %}
+        {% endif %}
+
+    </body>
+
+</html>

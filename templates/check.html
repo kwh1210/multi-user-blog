@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+
+
+<html>
+
+    <head>
+        <title>checker</title>
+    </head>
+
+    <style type="text/css">
+
+    .main-title {
+    display: block;
+    color: #222;
+    font-size: 40px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 30px;
+    text-decoration: none;
+    }
+    .post+.art{
+        margin-top:20px;
+    }
+    .post-title{
+        font-weight: bold;
+        font-size: 20px;
+    }
+    .post-body{
+        margin:0;
+        font-size: 17px;
+    }
+    .post-date {
+    position: absolute;
+    right: 0px;
+    bottom: 0px;
+    color: #999;
+
+}
+
+    </style>
+
+
+    <body>
+        <hr>
+        {% for user in users %}
+                <div class="post-title">{{user.username}}  </div>
+                <div class="post-title">{{user.pw_hash}}  </div>
+                <div class="post-title">{{user.email}}  </div>
+    {{yay}}
+
+        {% endfor %}
+
+    </body>
+
+</html>

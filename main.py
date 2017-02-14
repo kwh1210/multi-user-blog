@@ -296,7 +296,9 @@ class EditEntry(Handler):
                                         newpost_content=currentPost.content,
                                         newpost_created=currentPost.created,
                                         newpost_author=currentPost.author,
-                                        PermissionDenied = PermissionDenied)
+                                        PermissionDenied = PermissionDenied,
+                                        newpost_likes = len(currentPost.likes),
+)
         else:
             self.redirect("/blog/login")
 
@@ -339,7 +341,9 @@ class Delete(Handler):
                                 newpost_content=currentPost.content,
                                 newpost_created=currentPost.created,
                                 newpost_author=currentPost.author,
-                                PermissionDenied = PermissionDenied)
+                                PermissionDenied = PermissionDenied,
+                                newpost_likes = len(currentPost.likes),
+)
         else:
             self.redirect("/blog/login")
 

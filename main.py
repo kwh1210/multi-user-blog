@@ -58,6 +58,8 @@ def check_secure_val(h):
 
 
 
+
+
 def escape_html(s):
     return cgi.escape(s, quote = True)
 
@@ -95,6 +97,43 @@ class Handler(webapp2.RequestHandler):
         if cookie_val and check_secure_val(cookie_val):
             return cookie_val
 
+    def user_logged_in(self):
+        cookie = self.request.cookies.get('user')
+        if cookie:
+            username_cookie = check_secure_val(cookie)
+            if username_cookie:
+                return True
+            else:
+                return self.redirect("/blog/login")
+        else:
+            return self.redirect("/blog/login")
+
+    def post_exists(self,post_id):
+        key = db.Key.from_path('Post',int(post_id))
+        post = db.get(key)
+        if not post:
+            return self.redirect("/blog")
+        else:
+            return True
+
+    def comment_exists(self,post_id):
+        key = db.Key.from_path('Comment',int(post_id))
+        comment = db.get(key)
+        if not comment:
+            return self.redirect("/blog")
+        else:
+            return True
+
+    #It checks if the user is logged in as well
+    def user_owns_post(self,post):
+        if self.user_logged_in():
+            return check_secure_val(self.request.cookies.get('user')) == post.author
+
+    def user_owns_comment(self,comment):
+        if self.user_logged_in():
+            return check_secure_val(self.request.cookies.get('user')) == post.comment_author
+
+
 
 class Post(db.Model):
     subject = db.StringProperty(required = True)
@@ -102,6 +141,7 @@ class Post(db.Model):
     created = db.DateTimeProperty(auto_now_add = True)
     author = db.StringProperty(required= True)
     likes = db.StringListProperty(required= True)
+
 
 class User(db.Model):
     username = db.StringProperty(required=True)
@@ -153,21 +193,24 @@ class NewEntry(Handler):
 
     def post(self):
 
-        username_fromcookie = self.request.cookies.get('user')
+        if self.user_logged_in():
+            username_fromcookie = self.request.cookies.get('user')
 
-        author = check_secure_val(username_fromcookie)
-        subject = self.request.get("subject")
-        content = self.request.get("content")
+            author = check_secure_val(username_fromcookie)
+            subject = self.request.get("subject")
+            content = self.request.get("content")
 
-        if subject and content:
-            post = Post(subject = subject, content = content,author = author,likes=list())
-            post.put()
-            id = post.key().id();
-            print str(id)
-            self.redirect("/blog/%d"%id)
-        else:
-            error = "Your content is either empty or shit!"
-            self.render_newpost(subject=subject,content=content,error=error)
+            if subject and content:
+                post = Post(subject = subject, content = content,author = author,likes=list())
+                post.put()
+                id = post.key().id();
+                print str(id)
+                self.redirect("/blog/%d"%id)
+            else:
+                error = "Your content is either empty or shit!"
+                self.render_newpost(subject=subject,content=content,error=error)
+
+
 
 class SignupPage(Handler):
     def get(self):
@@ -285,43 +328,50 @@ class EditEntry(Handler):
         currentUser_cookie = self.request.cookies.get('user')
         if currentUser_cookie:
             currentUser = check_secure_val(currentUser_cookie)
-            currentPost = Post.get_by_id(int(id))
-            currentPostUser = currentPost.author
-            if currentPostUser == currentUser:
-                self.render_newpost(subject=currentPost.subject,content=currentPost.content,id=id)
-            else:
-                PermissionDenied = "Permission Denied."
-                self.render("front.html",id=id,
-                                        newpost_subject=currentPost.subject,
-                                        newpost_content=currentPost.content,
-                                        newpost_created=currentPost.created,
-                                        newpost_author=currentPost.author,
-                                        PermissionDenied = PermissionDenied,
-                                        newpost_likes = len(currentPost.likes),
-)
+
+            if self.post_exists(id):
+                currentPost = Post.get_by_id(int(id))
+                currentPostUser = currentPost.author
+                if currentPostUser == currentUser:
+                    self.render_newpost(subject=currentPost.subject,content=currentPost.content,id=id)
+                else:
+                    PermissionDenied = "Permission Denied."
+                    self.render("front.html",id=id,
+                                            newpost_subject=currentPost.subject,
+                                            newpost_content=currentPost.content,
+                                            newpost_created=currentPost.created,
+                                            newpost_author=currentPost.author,
+                                            PermissionDenied = PermissionDenied,
+                                            newpost_likes = len(currentPost.likes),
+    )
         else:
             self.redirect("/blog/login")
 
     def post(self,id):
 
-        username_fromcookie = self.request.cookies.get('user')
-        currentPost = Post.get_by_id(int(id))
+        if self.post_exists(id):
+            username_fromcookie = self.request.cookies.get('user')
+            currentPost = Post.get_by_id(int(id))
 
+            if self.user_owns_post(currentPost):
+                author = check_secure_val(username_fromcookie)
+                subject = self.request.get("subject")
+                content = self.request.get("content")
 
-        author = check_secure_val(username_fromcookie)
-        subject = self.request.get("subject")
-        content = self.request.get("content")
-
-        if subject and content:
-            currentPost.content = content
-            currentPost.subject = subject
-            currentPost.put()
-            id = currentPost.key().id();
-            print str(id)
-            self.redirect("/blog/%d"%id)
+                if subject and content:
+                    currentPost.content = content
+                    currentPost.subject = subject
+                    currentPost.put()
+                    id = currentPost.key().id();
+                    print str(id)
+                    self.redirect("/blog/%d"%id)
+                else:
+                    error = "put something decent here man! your content is either empty or shit!"
+                    self.render_newpost(subject=subject,content=content,error=error)
+            else:
+                self.redirect("/blog")
         else:
-            error = "put something decent here man! your content is either empty or shit!"
-            self.render_newpost(subject=subject,content=content,error=error)
+            self.redirect("/blog")
 
 class Delete(Handler):
     def get(self,id):
@@ -361,128 +411,135 @@ class AddComment(Handler):
 
 
     def post(self,id):
-        currentUser_cookie = self.request.cookies.get('user')
-        if currentUser_cookie:
-            currentUser = check_secure_val(currentUser_cookie)
-            if currentUser:
-                comment_content =self.request.get('comment')
-                if comment_content:
-                    comment = Comment(post_id = id, comment_content = comment_content,
-                                                        comment_author = currentUser)
-                    comment.put()
-                    time.sleep(.5)
-                    self.redirect("/blog/%d/comment"%int(id))
+        if self.post_exists(id):
+            currentUser_cookie = self.request.cookies.get('user')
+            if currentUser_cookie:
+                currentUser = check_secure_val(currentUser_cookie)
+                if currentUser:
+                    comment_content =self.request.get('comment')
+                    if comment_content:
+                        comment = Comment(post_id = id, comment_content = comment_content,
+                                                            comment_author = currentUser)
+                        comment.put()
+                        time.sleep(.5)
+                        self.redirect("/blog/%d/comment"%int(id))
+                    else:
+                        error = "You need to put some comment here"
+                        comments = db.GqlQuery("select * from Comment where post_id = '%s'"%id)
+                        self.render("comments.html",id=id,Comments = comments,Error=error)
                 else:
-                    error = "You need to put some comment here"
-                    comments = db.GqlQuery("select * from Comment where post_id = '%s'"%id)
-                    self.render("comments.html",id=id,Comments = comments,Error=error)
+                    self.redirect("/blog/login")
             else:
                 self.redirect("/blog/login")
-        else:
-            self.redirect("/blog/login")
 
 class EditComment(Handler):
     def get(self,id1,id2):
-        currentUser_cookie = self.request.cookies.get('user')
-        if currentUser_cookie:
-            currentUser = check_secure_val(currentUser_cookie)
-            currentComment = Comment.get_by_id(int(id2))
-            currentCommentUser = currentComment.comment_author
-            if currentComment.comment_author == currentUser:
-                self.render("comment_edit.html",comment=currentComment)
+        if self.post_exists(id1) and self.comment_exists(id2):
+            currentUser_cookie = self.request.cookies.get('user')
+            if currentUser_cookie:
+                currentUser = check_secure_val(currentUser_cookie)
+                currentComment = Comment.get_by_id(int(id2))
+                currentCommentUser = currentComment.comment_author
+                if currentComment.comment_author == currentUser:
+                    self.render("comment_edit.html",comment=currentComment)
+                else:
+                    self.response.out.write("Permission Denied")
             else:
-                self.response.out.write("Permission Denied")
-        else:
-            self.redirect("/blog/login")
+                self.redirect("/blog/login")
 
     def post(self,id1,id2):
-        username_fromcookie = self.request.cookies.get('user')
-        currentComment = Comment.get_by_id(int(id2))
+        if self.post_exists(id1) and self.comment_exists(id2):
+            if self.user_logged_in():
+                username_fromcookie = self.request.cookies.get('user')
+                currentComment = Comment.get_by_id(int(id2))
 
 
-        content = self.request.get("content")
+                content = self.request.get("content")
 
-        if content:
-            currentComment.comment_content = content
-            currentComment.put()
-            time.sleep(.5)
-            self.redirect("/blog/%s/comment"%id1)
-        else:
-            error = "Put new comment!"
-            self.render("comment_edit.html",comment=currentComment,Error=error)
+                if content:
+                    currentComment.comment_content = content
+                    currentComment.put()
+                    time.sleep(.5)
+                    self.redirect("/blog/%s/comment"%id1)
+                else:
+                    error = "Put new comment!"
+                    self.render("comment_edit.html",comment=currentComment,Error=error)
 
 
 class DelComment(Handler):
     def get(self,id1,id2):
-        currentUser_cookie = self.request.cookies.get('user')
-        if currentUser_cookie:
-            currentUser = check_secure_val(currentUser_cookie)
-            currentComment = Comment.get_by_id(int(id2))
-            currentCommentUser = currentComment.comment_author
-            if currentComment.comment_author == currentUser:
-                currentComment.delete()
-                time.sleep(.5)
-                self.redirect("/blog/%s/comment"%id1)
+        if self.post_exists(id1) and self.comment_exists(id2):
+            currentUser_cookie = self.request.cookies.get('user')
+            if currentUser_cookie:
+                currentUser = check_secure_val(currentUser_cookie)
+                currentComment = Comment.get_by_id(int(id2))
+                currentCommentUser = currentComment.comment_author
+                if currentComment.comment_author == currentUser:
+                    currentComment.delete()
+                    time.sleep(.5)
+                    self.redirect("/blog/%s/comment"%id1)
+                else:
+                    self.response.out.write("Permission Denied")
             else:
-                self.response.out.write("Permission Denied")
-        else:
-            self.redirect("/blog/login")
+                self.redirect("/blog/login")
 
 class LikePost(Handler):
     def get(self,id):
-        currentUser_cookie = self.request.cookies.get('user')
-        if currentUser_cookie:
-            currentUser = check_secure_val(currentUser_cookie)
-            currentPost = Post.get_by_id(int(id))
-            if currentPost.author != currentUser and currentUser not in currentPost.likes:
-                currentPost.likes.append(currentUser)
-                currentPost.put()
-                time.sleep(.5)
-                self.redirect("/blog/%s"%id)
+        if self.post_exists(id):
+            currentUser_cookie = self.request.cookies.get('user')
+            if currentUser_cookie:
+                currentUser = check_secure_val(currentUser_cookie)
+                currentPost = Post.get_by_id(int(id))
+                if currentPost.author != currentUser and currentUser not in currentPost.likes:
+                    currentPost.likes.append(currentUser)
+                    currentPost.put()
+                    time.sleep(.5)
+                    self.redirect("/blog/%s"%id)
+                else:
+                    newpost = Post.get_by_id(int(id))
+                    newpost_subject = newpost.subject
+                    newpost_content = newpost.content
+                    newpost_created = newpost.created
+                    newpost_author = newpost.author
+                    newpost_likes = newpost.likes
+                    PermissionDenied = "you either have already liked it or it's your post."
+                    self.render("front.html",id=id,newpost_subject=newpost_subject,
+                                                    newpost_content=newpost_content,
+                                                    newpost_created=newpost_created,
+                                                    newpost_author=newpost_author,
+                                                    newpost_likes = len(newpost.likes),
+                                                    PermissionDenied = PermissionDenied)
             else:
-                newpost = Post.get_by_id(int(id))
-                newpost_subject = newpost.subject
-                newpost_content = newpost.content
-                newpost_created = newpost.created
-                newpost_author = newpost.author
-                newpost_likes = newpost.likes
-                PermissionDenied = "you either have already liked it or it's your post."
-                self.render("front.html",id=id,newpost_subject=newpost_subject,
-                                                newpost_content=newpost_content,
-                                                newpost_created=newpost_created,
-                                                newpost_author=newpost_author,
-                                                newpost_likes = len(newpost.likes),
-                                                PermissionDenied = PermissionDenied)
-        else:
-            self.redirect("/blog/login")
+                self.redirect("/blog/login")
 
 class UnlikePost(Handler):
     def get(self,id):
-        currentUser_cookie = self.request.cookies.get('user')
-        if currentUser_cookie:
-            currentUser = check_secure_val(currentUser_cookie)
-            currentPost = Post.get_by_id(int(id))
-            if currentUser in currentPost.likes:
-                currentPost.likes.remove(currentUser)
-                currentPost.put()
-                time.sleep(.5)
-                self.redirect("/blog/%s"%id)
+        if self.post_exists(id):
+            currentUser_cookie = self.request.cookies.get('user')
+            if currentUser_cookie:
+                currentUser = check_secure_val(currentUser_cookie)
+                currentPost = Post.get_by_id(int(id))
+                if currentUser in currentPost.likes:
+                    currentPost.likes.remove(currentUser)
+                    currentPost.put()
+                    time.sleep(.5)
+                    self.redirect("/blog/%s"%id)
+                else:
+                    newpost = Post.get_by_id(int(id))
+                    newpost_subject = newpost.subject
+                    newpost_content = newpost.content
+                    newpost_created = newpost.created
+                    newpost_author = newpost.author
+                    newpost_likes = newpost.likes
+                    PermissionDenied = "You cannot unlike this because you've never liked it in the first place asshole!"
+                    self.render("front.html",id=id,newpost_subject=newpost_subject,
+                                                    newpost_content=newpost_content,
+                                                    newpost_created=newpost_created,
+                                                    newpost_author=newpost_author,
+                                                    newpost_likes = len(newpost.likes),
+                                                    PermissionDenied = PermissionDenied)
             else:
-                newpost = Post.get_by_id(int(id))
-                newpost_subject = newpost.subject
-                newpost_content = newpost.content
-                newpost_created = newpost.created
-                newpost_author = newpost.author
-                newpost_likes = newpost.likes
-                PermissionDenied = "You cannot unlike this because you've never liked it in the first place asshole!"
-                self.render("front.html",id=id,newpost_subject=newpost_subject,
-                                                newpost_content=newpost_content,
-                                                newpost_created=newpost_created,
-                                                newpost_author=newpost_author,
-                                                newpost_likes = len(newpost.likes),
-                                                PermissionDenied = PermissionDenied)
-        else:
-            self.redirect("/blog/login")
+                self.redirect("/blog/login")
 
 
 

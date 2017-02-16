@@ -16,7 +16,15 @@ jinja_env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir),
 
 from google.appengine.ext import db
 
-SECRET = "FUCKYOU"
+from models import User
+from models import Post
+from models import Comment
+
+
+
+file = open('secret.txt', 'r')
+SECRET= file.read()
+
 
 COOKIE_RE = re.compile(r'.+=;\s*Path=/')
 def valid_cookie(cookie):
@@ -112,7 +120,7 @@ class Handler(webapp2.RequestHandler):
         key = db.Key.from_path('Post',int(post_id))
         post = db.get(key)
         if not post:
-            return self.redirect("/blog")
+            return self.error(404)
         else:
             return True
 
@@ -120,49 +128,18 @@ class Handler(webapp2.RequestHandler):
         key = db.Key.from_path('Comment',int(post_id))
         comment = db.get(key)
         if not comment:
-            return self.redirect("/blog")
+            return self.error(404)
         else:
             return True
 
     #It checks if the user is logged in as well
     def user_owns_post(self,post):
         if self.user_logged_in():
-            return check_secure_val(self.request.cookies.get('user')) == post.author
+            return check_secure_val(self.request.cookies.get('user')) == post.author.username
 
     def user_owns_comment(self,comment):
         if self.user_logged_in():
             return check_secure_val(self.request.cookies.get('user')) == post.comment_author
-
-
-
-class Post(db.Model):
-    subject = db.StringProperty(required = True)
-    content = db.TextProperty(required = True)
-    created = db.DateTimeProperty(auto_now_add = True)
-    author = db.StringProperty(required= True)
-    likes = db.StringListProperty(required= True)
-
-
-class User(db.Model):
-    username = db.StringProperty(required=True)
-    pw_hash = db.StringProperty(required=True)
-    email = db.StringProperty()
-
-    @classmethod
-    def by_name(cls,name):
-        u = User.all().filter('username =',name).get()
-        return u
-
-    @classmethod
-    def register(cls,name,pw,email=None):
-        user = User(username= name,pw_hash=pw,email=email)
-        return user
-
-    @classmethod
-    def login(cls,name,pw):
-        if User.by_name(name):
-            return valid_pw(name,pw,User.by_name(name).pw_hash)
-
 
 class Blog(Handler):
     def get(self):
@@ -197,11 +174,13 @@ class NewEntry(Handler):
             username_fromcookie = self.request.cookies.get('user')
 
             author = check_secure_val(username_fromcookie)
+
+            user = User.by_name(author)
             subject = self.request.get("subject")
             content = self.request.get("content")
 
             if subject and content:
-                post = Post(subject = subject, content = content,author = author,likes=list())
+                post = Post(subject = subject, content = content,author = user,likes=list())
                 post.put()
                 id = post.key().id();
                 print str(id)
@@ -306,18 +285,20 @@ class LogoutHandler(Handler):
 
 class Permalink(Handler):
     def get(self,id):
-        newpost = Post.get_by_id(int(id))
-        #print "newpost is == ",newpost
-        newpost_subject =newpost.subject
-        newpost_content = newpost.content
-        newpost_created = newpost.created
-        newpost_author = newpost.author
-        newpost_likes = newpost.likes
-        self.render("front.html",id=id,newpost_subject=newpost_subject,
-                                        newpost_content=newpost_content,
-                                        newpost_created=newpost_created,
-                                        newpost_author=newpost_author,
-                                        newpost_likes = len(newpost.likes))
+
+        if self.post_exists(id):
+            newpost = Post.get_by_id(int(id))
+            #print "newpost is == ",newpost
+            newpost_subject =newpost.subject
+            newpost_content = newpost.content
+            newpost_created = newpost.created
+            newpost_author = newpost.author.username
+            newpost_likes = newpost.likes
+            self.render("front.html",id=id,newpost_subject=newpost_subject,
+                                            newpost_content=newpost_content,
+                                            newpost_created=newpost_created,
+                                            newpost_author=newpost_author,
+                                            newpost_likes = len(newpost.likes))
 
 
 class EditEntry(Handler):
@@ -331,7 +312,7 @@ class EditEntry(Handler):
 
             if self.post_exists(id):
                 currentPost = Post.get_by_id(int(id))
-                currentPostUser = currentPost.author
+                currentPostUser = currentPost.author.username
                 if currentPostUser == currentUser:
                     self.render_newpost(subject=currentPost.subject,content=currentPost.content,id=id)
                 else:
@@ -340,7 +321,7 @@ class EditEntry(Handler):
                                             newpost_subject=currentPost.subject,
                                             newpost_content=currentPost.content,
                                             newpost_created=currentPost.created,
-                                            newpost_author=currentPost.author,
+                                            newpost_author=currentPost.author.username,
                                             PermissionDenied = PermissionDenied,
                                             newpost_likes = len(currentPost.likes),
     )
@@ -370,17 +351,16 @@ class EditEntry(Handler):
                     self.render_newpost(subject=subject,content=content,error=error)
             else:
                 self.redirect("/blog")
-        else:
-            self.redirect("/blog")
+
 
 class Delete(Handler):
-    def get(self,id):
 
+    def get(self,id):
         currentUser_cookie = self.request.cookies.get('user')
         if currentUser_cookie:
             currentUser = check_secure_val(currentUser_cookie)
             currentPost = Post.get_by_id(int(id))
-            currentPostUser = currentPost.author
+            currentPostUser = currentPost.author.username
             if currentPostUser == currentUser:
                 currentPost.delete()
                 self.response.out.write("Delete complete!")
@@ -390,7 +370,7 @@ class Delete(Handler):
                                 newpost_subject=currentPost.subject,
                                 newpost_content=currentPost.content,
                                 newpost_created=currentPost.created,
-                                newpost_author=currentPost.author,
+                                newpost_author=currentPost.author.username,
                                 PermissionDenied = PermissionDenied,
                                 newpost_likes = len(currentPost.likes),
 )
@@ -398,16 +378,13 @@ class Delete(Handler):
             self.redirect("/blog/login")
 
 
-class Comment(db.Model):
-    post_id = db.StringProperty(required = True)
-    comment_content = db.TextProperty(required = True)
-    comment_author = db.StringProperty(required= True)
-    created = db.DateTimeProperty(auto_now_add = True)
+
 
 class AddComment(Handler):
     def get(self,id):
-        comments = db.GqlQuery("select * from Comment where post_id = '%s' order by created desc"%id)
-        self.render("comments.html",id=id,Comments = comments)
+        if self.post_exists(id):
+            comments = db.GqlQuery("select * from Comment where post_id = '%s' order by created desc"%id)
+            self.render("comments.html",id=id,Comments = comments)
 
 
     def post(self,id):
@@ -490,7 +467,7 @@ class LikePost(Handler):
             if currentUser_cookie:
                 currentUser = check_secure_val(currentUser_cookie)
                 currentPost = Post.get_by_id(int(id))
-                if currentPost.author != currentUser and currentUser not in currentPost.likes:
+                if currentPost.author.username != currentUser and currentUser not in currentPost.likes:
                     currentPost.likes.append(currentUser)
                     currentPost.put()
                     time.sleep(.5)
@@ -500,7 +477,7 @@ class LikePost(Handler):
                     newpost_subject = newpost.subject
                     newpost_content = newpost.content
                     newpost_created = newpost.created
-                    newpost_author = newpost.author
+                    newpost_author = newpost.author.username
                     newpost_likes = newpost.likes
                     PermissionDenied = "you either have already liked it or it's your post."
                     self.render("front.html",id=id,newpost_subject=newpost_subject,
@@ -529,7 +506,7 @@ class UnlikePost(Handler):
                     newpost_subject = newpost.subject
                     newpost_content = newpost.content
                     newpost_created = newpost.created
-                    newpost_author = newpost.author
+                    newpost_author = newpost.author.username
                     newpost_likes = newpost.likes
                     PermissionDenied = "You cannot unlike this because you've never liked it in the first place asshole!"
                     self.render("front.html",id=id,newpost_subject=newpost_subject,
